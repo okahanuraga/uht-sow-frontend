@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <base target="_top" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background-color: #f9f9f9;
+      color: #222;
+    }
+    label, select, input, button {
+      display: block;
+      margin-top: 10px;
+      font-weight: bold;
+      width: 100%;
+      max-width: 320px;
+      box-sizing: border-box;
+      font-size: 14px;
+      border-radius: 5px;
+    }
+    input, select {
+      padding: 8px;
+      border: 1px solid #ccc;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px 24px;
+      background: #ffd000;
+      border: none;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 16px;
+      transition: background-color 0.3s ease;
+    }
+    button:hover:not(:disabled) {
+      background: #e6c300;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    #loading {
+      margin-top: 15px;
+      font-style: italic;
+      color: #555;
+      display: none;
+    }
+    #result {
+      margin-top: 20px;
+      overflow-x: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 600px;
+      background: white;
+    }
+    thead th {
+      position: sticky;
+      top: 0;
+      background: #eee;
+      padding: 10px 6px;
+      font-size: 14px;
+      text-align: center;
+      z-index: 10;
+      border-bottom: 2px solid #ccc;
+    }
+    tbody td {
+      padding: 8px 6px;
+      font-size: 13px;
+      text-align: center;
+      border: 1px solid #ccc;
+      word-break: break-word;
+    }
+    tbody tr:nth-child(even) {
+      background-color: #fafafa;
+    }
+    footer {
+      margin-top: 40px;
+      font-size: 12px;
+      color: #666;
+      text-align: center;
+    }
+  </style>
+  <title>SOW Lookup UHT</title>
+</head>
+<body>
+  <h2>🔍 Cari Scope of Work (SOW)</h2>
+  <label for="woInput">Nomor WO</label>
+  <input type="text" id="woInput" placeholder="Misal: LIP 3504" autofocus onblur="loadParts()" />
+  <label for="partSelect">Nama Part</label>
+  <select id="partSelect" disabled><option value="">-- Pilih Part --</option></select>
+  <button id="searchBtn" onclick="searchSOW()" disabled>Cari</button>
+  <div id="loading">Memuat data, harap tunggu...</div>
+  <div id="result"></div>
+  <footer>
+    <div>© 2025 United Hydraulic Technology – All rights reserved</div>
+    <div>Production Engineering Team</div>
+    <div><strong>UHT Scope of Work</strong> · <span id="versionDisplay">v2.1</span></div>
+  </footer>
+  <script>
+    const woInput = document.getElementById("woInput");
+    const partSelect = document.getElementById("partSelect");
+    const searchBtn = document.getElementById("searchBtn");
+    const loadingDiv = document.getElementById("loading");
+    const resultDiv = document.getElementById("result");
+    let userRole = "viewer";
+    function loadParts() {
+      const wo = woInput.value.trim();
+      if (!wo) {
+        partSelect.innerHTML = '<option value="">-- Pilih Part --</option>';
+        partSelect.disabled = true;
+        searchBtn.disabled = true;
+        return;
+      }
+      partSelect.disabled = true;
+      searchBtn.disabled = true;
+      loadingDiv.style.display = "block";
+      resultDiv.innerHTML = "";
+      google.script.run.withSuccessHandler(parts => {
+        loadingDiv.style.display = "none";
+        if (parts.length === 0) {
+          partSelect.innerHTML = '<option value="">Tidak ada part ditemukan</option>';
+          partSelect.disabled = true;
+          searchBtn.disabled = true;
+        } else {
+          partSelect.innerHTML = '<option value="">-- Pilih Part --</option>' + 
+            parts.map(p => `<option value="${p}">${p}</option>`).join('');
+          partSelect.disabled = false;
+          searchBtn.disabled = true;
+        }
+      }).withFailureHandler(() => {
+        loadingDiv.style.display = "none";
+        partSelect.innerHTML = '<option value="">Gagal memuat part</option>';
+        partSelect.disabled = true;
+        searchBtn.disabled = true;
+      }).getPartsByWO(wo);
+    }
+    partSelect.addEventListener('change', () => {
+      searchBtn.disabled = !partSelect.value;
+    });
+    function searchSOW() {
+      const wo = woInput.value.trim();
+      const part = partSelect.value;
+      if (!wo || !part) {
+        alert("Mohon isi Nomor WO dan pilih Nama Part terlebih dahulu.");
+        return;
+      }
+      searchBtn.disabled = true;
+      loadingDiv.style.display = "block";
+      resultDiv.innerHTML = "";
+      google.script.run
+        .withSuccessHandler(renderResult)
+        .withFailureHandler(() => {
+          loadingDiv.style.display = "none";
+          searchBtn.disabled = false;
+          resultDiv.innerHTML = "<p style='color:red;'>Gagal mengambil data. Silakan coba lagi.</p>";
+        })
+        .getSOWDetail(wo, part);
+    }
+    function renderResult(data) {
+      loadingDiv.style.display = "none";
+      searchBtn.disabled = false;
+      if (!data || !data.sequence || data.sequence.length === 0) {
+        resultDiv.innerHTML = "<p><strong>Data tidak ditemukan.</strong></p>";
+        return;
+      }
+      let html = `<h3>Hasil untuk <em>${data.info.woNumber} – ${data.info.partName}</em></h3>`;
+      html += `<p>
+        <strong>Customer:</strong> ${data.info.customer}<br/>
+        <strong>Component:</strong> ${data.info.component}<br/>
+        <strong>Model:</strong> ${data.info.model}<br/>
+        <strong>Total Jam Kerja:</strong> ${data.info.totalHours.toFixed(2)}
+      </p>`;
+      html += `<table><thead><tr>
+        <th>No</th><th>Option</th><th>Proses</th><th>Mesin</th><th>Jam Kerja</th><th>Status</th><th>Release SOW</th>
+      </tr></thead><tbody>`;
+      data.sequence.forEach((item, i) => {
+        const statusCell = userRole === "editor" ?
+          `<select onchange="updateStatus('${data.info.woNumber}', '${data.info.partName}', '${item.process}', this.value)">
+            <option ${item.status === "WAIT" ? "selected" : ""}>WAIT</option>
+            <option ${item.status === "WIP" ? "selected" : ""}>WIP</option>
+            <option ${item.status === "FINISHED" ? "selected" : ""}>FINISHED</option>
+            <option ${item.status === "CANCELLED" ? "selected" : ""}>CANCELLED</option>
+          </select>` :
+          item.status;
+        html += `<tr>
+          <td>${(i + 1) * 10}</td>
+          <td>${item.option || "-"}</td>
+          <td>${item.process}</td>
+          <td>${item.machine}</td>
+          <td>${item.planHours}</td>
+          <td>${statusCell}</td>
+          <td>${item.release}</td>
+        </tr>`;
+      });
+      html += `</tbody></table>`;
+      resultDiv.innerHTML = html;
+    }
+    function updateStatus(wo, part, process, newStatus) {
+      google.script.run.setStatus(wo, part, process, newStatus);
+    }
+    google.script.run.withSuccessHandler(info => {
+      userRole = info.role;
+    }).getUserInfo();
+  </script>
+</body>
+</html>
