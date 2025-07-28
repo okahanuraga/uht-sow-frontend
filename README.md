@@ -1,1 +1,0 @@
-# uht-sow-frontend
